@@ -1,0 +1,39 @@
+﻿STT,Tên nhãn,Số lượng mẫu
+1,Apple___Apple_scab,630
+2,Apple___Black_rot,621
+3,Apple___Cedar_apple_rust,275
+4,Apple___healthy,1645
+5,Blueberry___healthy,1502
+6,Cherry_(including_sour)___healthy,854
+7,Cherry_(including_sour)___Powdery_mildew,1052
+8,Corn_(maize)___Cercospora_leaf_spot Gray_leaf_spot,513
+9,Corn_(maize)___Common_rust_,1192
+10,Corn_(maize)___healthy,1162
+11,Corn_(maize)___Northern_Leaf_Blight,985
+12,Grape___Black_rot,1180
+13,Grape___Esca_(Black_Measles),1383
+14,Grape___healthy,423
+15,Grape___Leaf_blight_(Isariopsis_Leaf_Spot),1076
+16,Orange___Haunglongbing_(Citrus_greening),5507
+17,Peach___Bacterial_spot,2297
+18,Peach___healthy,360
+19,"Pepper,_bell___Bacterial_spot",997
+20,"Pepper,_bell___healthy",1478
+21,Potato___Early_blight,1000
+22,Potato___healthy,152
+23,Potato___Late_blight,1000
+24,Raspberry___healthy,371
+25,Soybean___healthy,5090
+26,Squash___Powdery_mildew,1835
+27,Strawberry___healthy,456
+28,Strawberry___Leaf_scorch,1109
+29,Tomato___Bacterial_spot,2127
+30,Tomato___Early_blight,1000
+31,Tomato___healthy,1591
+32,Tomato___Late_blight,1909
+33,Tomato___Leaf_Mold,952
+34,Tomato___Septoria_leaf_spot,1771
+35,Tomato___Spider_mites Two-spotted_spider_mite,1676
+36,Tomato___Target_Spot,1404
+37,Tomato___Tomato_mosaic_virus,373
+38,Tomato___Tomato_Yellow_Leaf_Curl_Virus,5357
