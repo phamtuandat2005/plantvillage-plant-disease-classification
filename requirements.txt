@@ -8,3 +8,5 @@ Pillow==10.4.0
 opencv-python==4.10.0.84
 ipykernel==6.29.5
 fg-data-profiling
+tensorflow==2.20.0
+protobuf==5.29.5
