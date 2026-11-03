@@ -1,0 +1,50 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Virtual Environments
+.env/
+.venv/
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Jupyter Notebook Checkpoints
+.ipynb_checkpoints/
+*/.ipynb_checkpoints/*
+
+# Model Weights & Heavy Checkpoints
+*.h5
+*.keras
+*.ckpt
+*.pt
+*.pth
+*.onnx
+
+# Experiment Outputs, Logs & Artifacts
+outputs/
+logs/
+wandb/
+.tensorboard/
+
+# Heavy Raw Datasets (Color & Segmented Images & PlantDoc)
+plantvillage_dataset/color/
+plantvillage_dataset/segmented/
+plantvillage_dataset/plantdoc/
+
+# Distribution / Packaging
+build/
+dist/
+*.egg-info/
+
+# IDE & OS Temporary Files
+.vscode/
+.idea/
+.claude/
+.DS_Store
+Thumbs.db
+desktop.ini

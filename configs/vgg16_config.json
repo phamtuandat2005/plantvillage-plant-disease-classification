@@ -1,0 +1,72 @@
+{
+  "paths": {
+    "data_dir": "plantvillage_dataset/color",
+    "csv_dir": "plantvillage_dataset/csv",
+    "output_dir": "outputs/vgg16",
+    "checkpoint_dir": "outputs/vgg16/checkpoints",
+    "history_dir": "outputs/vgg16/histories",
+    "metric_dir": "outputs/vgg16/metrics",
+    "plot_dir": "outputs/vgg16/plots",
+    "gradcam_dir": "outputs/vgg16/gradcam",
+    "report_dir": "outputs/vgg16/reports"
+  },
+  "dataset": {
+    "img_size": [224, 224],
+    "batch_size": 32,
+    "num_classes": 38,
+    "split_ratios": {
+      "train": 0.70,
+      "val": 0.15,
+      "test": 0.15
+    },
+    "use_class_weight": true
+  },
+  "model": {
+    "architecture": "VGG16",
+    "weights": "imagenet",
+    "input_shape": [224, 224, 3],
+    "dropout_rate": 0.3,
+    "classifier_type": "gap"
+  },
+  "augmentation": {
+    "rotation_factor": 0.08333333333333333,
+    "rotation_degrees": 30,
+    "crop_size": [200, 200],
+    "target_size": [224, 224],
+    "brightness_factor": 0.2,
+    "contrast_factor": 0.2,
+    "flip_mode": "horizontal_and_vertical"
+  },
+  "experiments": {
+    "exp_a": {
+      "name": "Experiment A - Feature Extraction",
+      "learning_rate": 0.001,
+      "trainable_blocks": 0,
+      "epochs": 20,
+      "patience": 5,
+      "use_augmentation": true
+    },
+    "exp_b": {
+      "name": "Experiment B - Fine-tuning",
+      "learning_rate": 0.00001,
+      "trainable_blocks": 1,
+      "unfreeze_layer_prefix": "block5",
+      "epochs": 15,
+      "patience": 3,
+      "use_augmentation": true
+    },
+    "exp_c": {
+      "name": "Experiment C - Augmentation Ablation",
+      "learning_rate": 0.001,
+      "trainable_blocks": 0,
+      "epochs": 20,
+      "patience": 5,
+      "use_augmentation": false
+    }
+  },
+  "reproducibility": {
+    "seed": 425,
+    "deterministic": true
+  }
+}
+
