@@ -138,10 +138,10 @@ class UniversalModelWrapper:
             self.class_names = [f"Class_{i}" for i in range(num_classes)]
             
         self.device = device
-        self._param_count = self._compute_param_count()
         self._file_size_mb = os.path.getsize(model_path) / (1024 * 1024) if os.path.exists(model_path) else 0.0
-        # Auto-detect whether this model has preprocessing already baked in
-        self._has_builtin_preprocess = self._detect_builtin_preprocessing()
+        # Auto-detect preprocessing scheme required by model
+        self.preprocess_mode = self._detect_preprocess_mode()
+        self._param_count = self._compute_param_count()
 
     def _compute_param_count(self) -> int:
         """Returns total parameter count of the underlying model."""
@@ -162,74 +162,77 @@ class UniversalModelWrapper:
     def file_size_mb(self) -> float:
         return self._file_size_mb
 
-    def _detect_builtin_preprocessing(self) -> bool:
+    def _detect_preprocess_mode(self) -> str:
         """
-        Auto-detects whether a TF/Keras model already has an internal preprocessing
-        layer baked in (e.g. Rescaling, Normalization, or a custom bgr-conversion
-        Conv2D named like 'imagenet_rgb_to_keras_bgr').
+        Determines the exact preprocessing required by the model:
+        - 'imagenet_norm': (x/255 - mean) / std (ImageNet RGB standard, used by PyTorch & custom ResNet50)
+        - 'tf_vgg_bgr': tf.keras.applications.vgg16.preprocess_input (BGR zero-centering, used by TF VGG16)
+        - 'raw': raw [0, 255] pixels (for models that have full input preprocessing layers inside)
+        """
+        if self.framework == "pytorch":
+            return "imagenet_norm"
 
-        Returns True  → model handles its own preprocessing; pass raw [0, 255] pixels.
-        Returns False → apply the team-standard external preprocessing before inference.
-        """
-        if self.framework != "tensorflow":
-            return False
-        try:
-            for layer in self.model.layers:
-                ltype = type(layer).__name__.lower()
-                lname = (layer.name or "").lower()
-                # Keras built-in preprocessing layer types
-                if any(k in ltype for k in ["rescaling", "normalization", "preprocessing"]):
-                    return True
-                # Custom names that imply built-in preprocessing
-                if any(k in lname for k in ["preprocess", "rescal", "normaliz", "bgr", "rgb_to", "to_bgr"]):
-                    return True
-        except Exception:
-            pass
-        return False
+        # Check TF model
+        m_name = (self.name or "").lower()
+        p_name = (self.model_path or "").lower()
+
+        # If model has internal BGR conversion layer like 'imagenet_rgb_to_keras_bgr':
+        # Notice that this layer expects normalized RGB: (x/255 - mean)/std !
+        # Its weights are std_scaler and mean_bias designed to transform normalized RGB into Keras BGR.
+        for layer in getattr(self.model, "layers", []):
+            lname = (layer.name or "").lower()
+            if "imagenet_rgb_to_keras_bgr" in lname or "rgb_to" in lname:
+                return "imagenet_norm"
+
+        # If model is VGG16 (TF / Keras applications)
+        if "vgg16" in m_name or "vgg16" in p_name:
+            return "tf_vgg_bgr"
+
+        # If model has other builtin preprocessing (e.g. Rescaling(1./255))
+        for layer in getattr(self.model, "layers", []):
+            ltype = type(layer).__name__.lower()
+            lname = (layer.name or "").lower()
+            if any(k in ltype for k in ["rescaling", "normalization"]):
+                return "raw"
+            if any(k in lname for k in ["rescal", "normaliz"]):
+                return "raw"
+
+        # Default fallback
+        return "imagenet_norm"
 
     def preprocess_images(self, images_np: np.ndarray) -> Any:
         """
-        Applies the UNIFIED TEAM PREPROCESSING STANDARD to a batch of images.
+        Applies model-specific preprocessing to ensure optimal inference accuracy.
 
-        Input : numpy array  (N, 224, 224, 3), dtype float32, pixel values [0, 255]
-        Output: preprocessed array / tensor ready for model inference
-
-        Standard (Group Consensus — same for every member's model):
-            1. Normalize to [0, 1]  :  x = x / 255.0
-            2. Subtract ImageNet mean: x = x - [0.485, 0.456, 0.406]
-            3. Divide ImageNet std   : x = x / [0.229, 0.224, 0.225]
-
-        TensorFlow output : numpy array  (N, 224, 224, 3)
-        PyTorch output    : torch.Tensor (N,   3, 224, 224)
-
-        Auto-bypass: if the loaded TF/Keras model already contains a built-in
-        preprocessing layer (auto-detected in __init__), raw [0, 255] pixels are
-        passed directly to avoid double-preprocessing artifacts.
+        Input: numpy array (N, 224, 224, 3), dtype float32, RGB pixel values [0, 255].
         """
-        # --- ImageNet RGB constants (team consensus) ---
         IMAGENET_MEAN = np.array([0.485, 0.456, 0.406], dtype=np.float32)
         IMAGENET_STD  = np.array([0.229, 0.224, 0.225], dtype=np.float32)
 
-        if self.framework == "tensorflow":
-            if self._has_builtin_preprocess:
-                # Model already handles preprocessing internally — pass raw pixels
-                return images_np.astype(np.float32)
-            # Unified team standard: /255 → subtract mean → divide std  (RGB order)
-            x = images_np.astype(np.float32) / 255.0          # → [0.0, 1.0]
-            x = (x - IMAGENET_MEAN) / IMAGENET_STD             # → zero-mean, unit-std
-            return x
-
-        elif self.framework == "pytorch":
+        if self.preprocess_mode == "tf_vgg_bgr":
+            # TF VGG16 application standard: RGB -> BGR, zero-center by ImageNet mean
             # pyrefly: ignore[missing-import]
-            import torch
-            # /255 → (N, C, H, W) → subtract mean → divide std
-            tensor = torch.from_numpy(images_np.astype(np.float32) / 255.0).permute(0, 3, 1, 2)
-            mean = torch.tensor(IMAGENET_MEAN).view(1, 3, 1, 1)
-            std  = torch.tensor(IMAGENET_STD).view(1, 3, 1, 1)
-            tensor = (tensor - mean) / std
-            if self.device != "cpu":
-                tensor = tensor.to(self.device)
-            return tensor
+            import tensorflow as tf
+            return tf.keras.applications.vgg16.preprocess_input(images_np.copy())
+
+        elif self.preprocess_mode == "raw":
+            return images_np.astype(np.float32)
+
+        elif self.preprocess_mode == "imagenet_norm":
+            if self.framework == "tensorflow":
+                # (x/255 - mean) / std (RGB)
+                x = images_np.astype(np.float32) / 255.0
+                return (x - IMAGENET_MEAN) / IMAGENET_STD
+            elif self.framework == "pytorch":
+                # pyrefly: ignore[missing-import]
+                import torch
+                tensor = torch.from_numpy(images_np.astype(np.float32) / 255.0).permute(0, 3, 1, 2)
+                mean = torch.tensor(IMAGENET_MEAN).view(1, 3, 1, 1)
+                std  = torch.tensor(IMAGENET_STD).view(1, 3, 1, 1)
+                tensor = (tensor - mean) / std
+                if self.device != "cpu":
+                    tensor = tensor.to(self.device)
+                return tensor
 
         return images_np
 
