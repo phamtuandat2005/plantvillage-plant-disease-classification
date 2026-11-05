@@ -11,6 +11,27 @@ Computes comprehensive diagnostic metrics:
 - Macro & Weighted F1-score, Precision, Recall
 - Inference Latency (ms / sample)
 - Visual 9-image diagnosis grid with confidence scores and error highlights.
+
+==============================================================================
+UNIFIED TEAM PREPROCESSING STANDARD (Group Consensus)
+==============================================================================
+Pipeline: RGB image (H=224, W=224, C=3) with pixel values in [0, 255]
+
+Step 1 — Resize  : 224 × 224 pixels (PIL BILINEAR, RGB, 3 channels)
+Step 2 — Scale   : divide by 255.0  →  [0.0, 1.0]
+Step 3 — Normalize:
+    x = (x - mean) / std
+    mean = [0.485, 0.456, 0.406]   (ImageNet RGB mean)
+    std  = [0.229, 0.224, 0.225]   (ImageNet RGB std)
+
+This matches the torchvision / tf.keras.applications standard for
+VGG16, ResNet50, MobileNetV2 when used with transfer learning.
+
+NOTE: Models that already embed an internal preprocessing layer
+      (e.g. a Rescaling or custom bgr-conversion Conv2D baked into
+      the .keras / .h5 file) are auto-detected and receive raw [0, 255]
+      pixel arrays — avoiding double-preprocessing artifacts.
+==============================================================================
 """
 
 import os
@@ -119,6 +140,8 @@ class UniversalModelWrapper:
         self.device = device
         self._param_count = self._compute_param_count()
         self._file_size_mb = os.path.getsize(model_path) / (1024 * 1024) if os.path.exists(model_path) else 0.0
+        # Auto-detect whether this model has preprocessing already baked in
+        self._has_builtin_preprocess = self._detect_builtin_preprocessing()
 
     def _compute_param_count(self) -> int:
         """Returns total parameter count of the underlying model."""
@@ -139,24 +162,70 @@ class UniversalModelWrapper:
     def file_size_mb(self) -> float:
         return self._file_size_mb
 
+    def _detect_builtin_preprocessing(self) -> bool:
+        """
+        Auto-detects whether a TF/Keras model already has an internal preprocessing
+        layer baked in (e.g. Rescaling, Normalization, or a custom bgr-conversion
+        Conv2D named like 'imagenet_rgb_to_keras_bgr').
+
+        Returns True  → model handles its own preprocessing; pass raw [0, 255] pixels.
+        Returns False → apply the team-standard external preprocessing before inference.
+        """
+        if self.framework != "tensorflow":
+            return False
+        try:
+            for layer in self.model.layers:
+                ltype = type(layer).__name__.lower()
+                lname = (layer.name or "").lower()
+                # Keras built-in preprocessing layer types
+                if any(k in ltype for k in ["rescaling", "normalization", "preprocessing"]):
+                    return True
+                # Custom names that imply built-in preprocessing
+                if any(k in lname for k in ["preprocess", "rescal", "normaliz", "bgr", "rgb_to", "to_bgr"]):
+                    return True
+        except Exception:
+            pass
+        return False
+
     def preprocess_images(self, images_np: np.ndarray) -> Any:
         """
-        Applies standard framework-specific preprocessing for 224x224 RGB images.
-        Input: numpy array of shape (N, 224, 224, 3) with values in [0, 255].
+        Applies the UNIFIED TEAM PREPROCESSING STANDARD to a batch of images.
+
+        Input : numpy array  (N, 224, 224, 3), dtype float32, pixel values [0, 255]
+        Output: preprocessed array / tensor ready for model inference
+
+        Standard (Group Consensus — same for every member's model):
+            1. Normalize to [0, 1]  :  x = x / 255.0
+            2. Subtract ImageNet mean: x = x - [0.485, 0.456, 0.406]
+            3. Divide ImageNet std   : x = x / [0.229, 0.224, 0.225]
+
+        TensorFlow output : numpy array  (N, 224, 224, 3)
+        PyTorch output    : torch.Tensor (N,   3, 224, 224)
+
+        Auto-bypass: if the loaded TF/Keras model already contains a built-in
+        preprocessing layer (auto-detected in __init__), raw [0, 255] pixels are
+        passed directly to avoid double-preprocessing artifacts.
         """
+        # --- ImageNet RGB constants (team consensus) ---
+        IMAGENET_MEAN = np.array([0.485, 0.456, 0.406], dtype=np.float32)
+        IMAGENET_STD  = np.array([0.229, 0.224, 0.225], dtype=np.float32)
+
         if self.framework == "tensorflow":
-            import tensorflow as tf
-            # VGG16 standard ImageNet preprocess (BGR conversion + mean centering)
-            return tf.keras.applications.vgg16.preprocess_input(images_np.astype(np.float32).copy())
+            if self._has_builtin_preprocess:
+                # Model already handles preprocessing internally — pass raw pixels
+                return images_np.astype(np.float32)
+            # Unified team standard: /255 → subtract mean → divide std  (RGB order)
+            x = images_np.astype(np.float32) / 255.0          # → [0.0, 1.0]
+            x = (x - IMAGENET_MEAN) / IMAGENET_STD             # → zero-mean, unit-std
+            return x
 
         elif self.framework == "pytorch":
             # pyrefly: ignore[missing-import]
             import torch
-            # PyTorch standard: (N, 3, 224, 224) normalized by ImageNet mean & std
-            # Normalize to [0, 1]
+            # /255 → (N, C, H, W) → subtract mean → divide std
             tensor = torch.from_numpy(images_np.astype(np.float32) / 255.0).permute(0, 3, 1, 2)
-            mean = torch.tensor([0.485, 0.456, 0.406]).view(1, 3, 1, 1)
-            std = torch.tensor([0.229, 0.224, 0.225]).view(1, 3, 1, 1)
+            mean = torch.tensor(IMAGENET_MEAN).view(1, 3, 1, 1)
+            std  = torch.tensor(IMAGENET_STD).view(1, 3, 1, 1)
             tensor = (tensor - mean) / std
             if self.device != "cpu":
                 tensor = tensor.to(self.device)
@@ -480,6 +549,7 @@ def compare_multiple_models(
     summary_rows = []
 
     for wrapper in models:
+        print(f"---> Evaluating {wrapper.name} on {len(images)} images...")
         res = evaluate_model_on_dataset(wrapper, images, labels, batch_size=batch_size)
         results_dict[wrapper.name] = res
         summary_rows.append({
@@ -497,6 +567,7 @@ def compare_multiple_models(
             "Params": f"{res['param_count']:,}",
             "Size (MB)": f"{res['file_size_mb']:.1f}",
         })
+        print(f"---> {wrapper.name} evaluation completed.")
 
     comparison_df = pd.DataFrame(summary_rows)
     return comparison_df, results_dict
