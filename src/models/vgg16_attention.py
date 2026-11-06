@@ -5,8 +5,11 @@ Integrates global context modeling directly into VGG16 for robust field-conditio
 
 from typing import Tuple, Dict, Any, Optional
 import tensorflow as tf
+# pyrefly: ignore[missing-import]
 import keras
+# pyrefly: ignore[missing-import]
 from keras import layers, models
+# pyrefly: ignore[missing-import]
 from tensorflow.keras.applications import VGG16
 
 
