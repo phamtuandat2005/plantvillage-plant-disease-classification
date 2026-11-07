@@ -14,29 +14,32 @@ Pipeline thực nghiệm được thiết kế theo cấu trúc module hóa phâ
 
 ```mermaid
 flowchart TD
-    A["Ảnh gốc PlantVillage (54.284 ảnh)"] --> B["Làm sạch dữ liệu: Lọc 21 ảnh trùng lặp (MD5)"]
+    A["Ảnh gốc PlantVillage (256x256x3)"] --> B["Làm sạch dữ liệu: Lọc 21 ảnh trùng (MD5)"]
     B --> C["Stratified Split (70/15/15)<br/>Train: 37,998 | Val: 8,143 | Test: 8,143"]
     C --> D1["Tập Train (37,998)"]
     C --> D2["Tập Val (8,143)"]
-    C --> D3["Tập Test Lab (8,143)"]
+    C --> D3["Tập Test (8,143)"]
     
-    D1 --> E1["Data Augmentation (Train Only)<br/>Flip, Rotate ±15°, Zoom, Brightness/Contrast ±20%"]
-    E1 --> F1["vgg16.preprocess_input (RGB -> BGR, trừ mean ImageNet)"]
+    D1 --> E1["Data Augmentation (Train Only)<br/>Flip, Rotate, Zoom, Brightness, Contrast"]
+    E1 --> F1["vgg16.preprocess_input<br/>(RGB -> BGR, trừ mean ImageNet)"]
     D2 --> F2["vgg16.preprocess_input"]
     D3 --> F3["vgg16.preprocess_input"]
     
-    F1 --> G["VGG16 Backbone (ImageNet Pre-trained)"]
-    G --> H["GlobalAveragePooling2D (512 chiều)"]
-    H --> I["Dropout (rate = 0.3)"]
-    I --> J["Dense Classifier Head (38 units, Softmax)"]
+    F1 --> G["tf.data Pipeline (Batch 32, Shuffle, Prefetch)"]
+    F2 --> G
     
-    J --> K1["TN2 / Exp A: Feature Extraction<br/>Backbone Frozen | LR=1e-3"]
-    J --> K2["TN2 / Exp B: Fine-tuning Block 5<br/>Unfreeze Block 5 | LR=1e-5"]
-    J --> K3["TN3 / Exp C: Ablation Study<br/>No Augmentation | LR=1e-3"]
+    G --> H["VGG16 Backbone (ImageNet Pretrained)"]
+    H --> I["GlobalAveragePooling2D (512-dim)"]
+    I --> J["Dropout (rate = 0.3)"]
+    J --> K["Dense Classifier (38 units, Softmax)"]
     
-    K2 --> L["ĐÁNH GIÁ TẬP 1: Test PlantVillage (8.143 ảnh Lab)<br/>Accuracy: 97.63% | Macro F1: 0.9716"]
-    K2 --> M["ĐÁNH GIÁ TẬP 2: Test PlantDoc (236 ảnh Thực địa)<br/>Domain Shift Analysis & Adaptation"]
-    M --> N["Field Fine-Tuned / Top-k Evaluation<br/>Top-1: 53.81% | Top-3: 80.08% | Top-5: 86.44%"]
+    K --> L1["Experiment A: Feature Extraction<br/>Backbone Frozen | LR=1e-3"]
+    L1 --> L2["Experiment B: Fine-tuning<br/>Unfreeze Block 5 | LR=1e-5"]
+    L1 --> L3["Experiment C: Ablation Study<br/>No Augmentation | LR=1e-3"]
+    
+    F3 --> M["Independent Test Evaluation<br/>Accuracy, Precision, Recall, Macro/Weighted F1"]
+    M --> N["Confusion Matrix (38x38 Heatmap & CSV)"]
+    M --> O["Grad-CAM Explainability (block5_conv3)<br/>Mẫu dự đoán đúng & Mẫu dự đoán sai"]
 ```
 
 ---
